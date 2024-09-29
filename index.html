@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>词条收集器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+        }
+
+        .container {
+            width: 60%;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+            overflow: auto;
+        }
+
+        input,
+        textarea {
+            padding: 8px;
+            margin-bottom: 10px;
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin-top: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #linksDisplay {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+            width: 100%;
+            box-sizing: border-box;
+            text-align: center;
+            line-height: 2;
+        }
+
+        a {
+            display: inline-block;
+            text-decoration: none;
+            color: #1e90ff;
+            padding: 5px 10px;
+            margin: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                width: 95%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <h1 style="text-align: center;">词条收集器</h1>
+    <p style="text-align: center; margin-bottom: 20px; color: gray">用于保存各种百科词条链接，支持导入导出和页面缓存，右键链接可以删除词条</p>
+    <label for="linkListInput">输入链接(支持多个，换行分割):</label>
+    <textarea id="linkListInput" placeholder="https://www.example1.com&#10;https://www.example2.com&#10;..."></textarea>
+    <button onclick="fetchAndSaveMultipleTitles()">获取链接标题并保存</button>
+    <button onclick="exportLinks()">导出JSON</button>
+    <button onclick="importLinks()">导入JSON</button>
+</div>
+
+<div id="linksDisplay"></div>
+
+<script>
+    let linksWithTitles = localStorage.getItem('linksWithTitles');
+    if (!linksWithTitles) {
+        linksWithTitles = {};
+    } else {
+        linksWithTitles = JSON.parse(linksWithTitles);
+    }
+    viewLinks();
+
+    function fetchAndSaveMultipleTitles() {
+        const linkList = document.getElementById('linkListInput').value.trim();
+        const urls = linkList.split(/[\n\r]+/).filter(Boolean); // Split on newlines or carriage returns
+        urls.forEach(url => {
+            url = url.trim();
+            if (!linksWithTitles[url]) {
+                fetch(url)
+                    .then(response => response.text())
+                    .then(html => {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        linksWithTitles[url] = cleanLinkName(doc.querySelector('title').innerText);
+                        viewLinks();
+                        localStorage.setItem('linksWithTitles', JSON.stringify(linksWithTitles)); // Store in local storage
+                    })
+                    .catch(error => {
+                        console.error('An error occurred', error);
+                    });
+            }
+        });
+    }
+
+    function viewLinks() {
+        const linksDisplay = document.getElementById('linksDisplay');
+        linksDisplay.innerHTML = '';
+
+        Object.keys(linksWithTitles).reverse().forEach(url => {
+            const a = document.createElement('a');
+            a.setAttribute('href', url);
+            a.setAttribute('target', '_blank');
+            a.textContent = linksWithTitles[url];
+            a.addEventListener('contextmenu', function (event) {
+                event.preventDefault(); // Prevent the default context menu
+                deleteLink(url);
+            });
+            linksDisplay.appendChild(a);
+            linksDisplay.appendChild(document.createTextNode('\t'));
+        });
+    }
+
+    function deleteLink(url) {
+        if (confirm('确定要删除此链接吗?')) {
+            delete linksWithTitles[url];
+            viewLinks();
+            localStorage.setItem('linksWithTitles', JSON.stringify(linksWithTitles));
+        }
+    }
+
+    function exportLinks() {
+        const data = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(linksWithTitles));
+        const a = document.createElement('a');
+        a.setAttribute('href', data);
+        a.setAttribute('download', 'linksWithTitles.json');
+        a.click();
+    }
+
+    function importLinks() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = e => {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.readAsText(file);
+            reader.onload = () => {
+                linksWithTitles = JSON.parse(reader.result);
+                viewLinks();
+                localStorage.setItem('linksWithTitles', JSON.stringify(linksWithTitles));
+            };
+            input.value = '';
+        };
+        input.click();
+    }
+
+    function cleanLinkName(linkName) {
+        const bannedEndings = ["_百度百科", " - 搜狗百科", " - MBA智库百科", " - 维基百科，自由的百科全书"];
+        for (let ending of bannedEndings) {
+            if (linkName.endsWith(ending)) {
+                linkName = linkName.substring(0, linkName.length - ending.length).trim();
+                break;
+            }
+        }
+        return linkName;
+    }
+</script>
+</body>
+</html>
